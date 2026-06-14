@@ -54,6 +54,8 @@ class CNN(nn.Module):
             32, 64, kernel_size=3, padding=1
         )
 
+        self.dropout = nn.Dropout(0.25)
+
         self.pool = nn.MaxPool2d(2, 2)
 
         self.fc1 = nn.Linear(
@@ -76,6 +78,8 @@ class CNN(nn.Module):
         x = self.relu(self.conv2(x))
         x = self.pool(x)
 
+        x = self.dropout(x)
+
         x = x.view(-1, 64 * 7 * 7)
 
         x = self.relu(self.fc1(x))
@@ -94,7 +98,7 @@ optimizer = optim.Adam(
 )
 
 # Training
-epochs = 5
+epochs = 15
 
 for epoch in range(epochs):
 
@@ -124,6 +128,22 @@ for epoch in range(epochs):
         f"Epoch {epoch+1}/{epochs}, "
         f"Loss: {running_loss:.4f}"
     )
+
+    # Evaluate on test dataset after each epoch
+    model.eval()
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for images, labels in test_loader:
+            images = images.to(device)
+            labels = labels.to(device)
+            outputs = model(images)
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+    accuracy = 100 * correct / total
+    print(f"Test Accuracy after epoch {epoch+1}: {accuracy:.2f}%\n")
+    model.train()
 
 # Save Model
 torch.save(
