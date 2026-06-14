@@ -96,7 +96,8 @@ if st.button("Predict"):
             if new_h == 0:
                 new_h = 1
 
-            resized = crop.resize((new_w, new_h), Image.ANTIALIAS)
+            # Use LANCZOS for high-quality resize; ANTIALIAS is deprecated in newer Pillow versions
+            resized = crop.resize((new_w, new_h), Image.LANCZOS)
 
             # Paste into 28x28 image and center
             new_img = Image.new('L', (28, 28), 0)
