@@ -10,90 +10,120 @@ import torch.nn as nn
 class CNN(nn.Module):
     def __init__(self):
         super().__init__()
-```
-    self.conv1 = nn.Conv2d(1, 32, 3, padding=1)
-    self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
+        self.conv1 = nn.Conv2d(1, 32, 3, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
 
-    self.pool = nn.MaxPool2d(2, 2)
+        self.pool = nn.MaxPool2d(2, 2)
 
-    self.fc1 = nn.Linear(64 * 7 * 7, 128)
-    self.fc2 = nn.Linear(128, 10)
+        self.fc1 = nn.Linear(64 * 7 * 7, 128)
+        self.fc2 = nn.Linear(128, 10)
 
-    self.relu = nn.ReLU()
+        self.relu = nn.ReLU()
 
-def forward(self, x):
-    x = self.relu(self.conv1(x))
-    x = self.pool(x)
+    def forward(self, x):
+        x = self.relu(self.conv1(x))
+        x = self.pool(x)
 
-    x = self.relu(self.conv2(x))
-    x = self.pool(x)
+        x = self.relu(self.conv2(x))
+        x = self.pool(x)
 
-    x = x.view(-1, 64 * 7 * 7)
+        x = x.view(-1, 64 * 7 * 7)
 
-    x = self.relu(self.fc1(x))
-    x = self.fc2(x)
+        x = self.relu(self.fc1(x))
+        x = self.fc2(x)
 
-    return x
-```
+        return x
+
 
 @st.cache_resource
 def load_model():
-model = CNN()
-model.load_state_dict(
-torch.load(
-"digit_cnn.pth",
-map_location=torch.device("cpu")
-)
-)
-model.eval()
-return model
+    model = CNN()
+    model.load_state_dict(
+        torch.load(
+            "digit_cnn.pth",
+            map_location=torch.device("cpu"),
+        )
+    )
+    model.eval()
+    return model
+
 
 model = load_model()
 
 st.title("Handwritten Digit Recognition")
 
 canvas_result = st_canvas(
-fill_color="white",
-stroke_width=15,
-stroke_color="white",
-background_color="black",
-height=280,
-width=280,
-drawing_mode="freedraw",
-key="canvas",
+    fill_color="white",
+    stroke_width=15,
+    stroke_color="white",
+    background_color="black",
+    height=280,
+    width=280,
+    drawing_mode="freedraw",
+    key="canvas",
 )
 
 if st.button("Predict"):
+    if canvas_result.image_data is not None:
+        # Convert to grayscale
+        pil_img = Image.fromarray(canvas_result.image_data.astype("uint8")).convert("L")
 
-```
-if canvas_result.image_data is not None:
+        def preprocess(pil_img):
+            arr = np.array(pil_img)
+            # Find bounding box of the drawn digit (non-zero pixels)
+            non_empty_rows = np.where(np.any(arr > 0, axis=1))[0]
+            non_empty_cols = np.where(np.any(arr > 0, axis=0))[0]
 
-    img = Image.fromarray(
-        (canvas_result.image_data[:, :, 0]).astype("uint8")
-    )
+            if non_empty_rows.size and non_empty_cols.size:
+                top, bottom = non_empty_rows[0], non_empty_rows[-1]
+                left, right = non_empty_cols[0], non_empty_cols[-1]
+                crop = pil_img.crop((left, top, right + 1, bottom + 1))
+            else:
+                crop = pil_img
 
-    img = img.resize((28, 28))
+            # Resize preserving aspect ratio to fit in 20x20 box
+            max_side = 20
+            w, h = crop.size
+            if w > h:
+                new_w = max_side
+                new_h = int(round((max_side * h) / w))
+            else:
+                new_h = max_side
+                new_w = int(round((max_side * w) / h))
 
-    img = np.array(img).astype(np.float32)
+            if new_w == 0:
+                new_w = 1
+            if new_h == 0:
+                new_h = 1
 
-    img = (img / 255.0 - 0.5) / 0.5
+            resized = crop.resize((new_w, new_h), Image.ANTIALIAS)
 
-    img = torch.tensor(img)
+            # Paste into 28x28 image and center
+            new_img = Image.new('L', (28, 28), 0)
+            paste_x = (28 - new_w) // 2
+            paste_y = (28 - new_h) // 2
+            new_img.paste(resized, (paste_x, paste_y))
 
-    img = img.unsqueeze(0)
-    img = img.unsqueeze(0)
+            return new_img
 
-    with torch.no_grad():
+        proc = preprocess(pil_img)
 
-        output = model(img)
+        # Show processed 28x28 image for debugging
+        st.image(proc.resize((140, 140)), caption="Processed 28x28 input (upsampled)")
 
-        probs = torch.softmax(output, dim=1)
+        img = np.array(proc).astype(np.float32)
+        img = img / 255.0
+        img = (img - 0.5) / 0.5
 
-        confidence = torch.max(probs).item() * 100
+        img = torch.tensor(img)
+        img = img.unsqueeze(0).unsqueeze(0)
 
-        prediction = torch.argmax(probs).item()
+        with torch.no_grad():
+            output = model(img)
+            probs = torch.softmax(output, dim=1)
+            confidence = torch.max(probs).item() * 100
+            prediction = torch.argmax(probs).item()
 
-    st.success(
-        f"Predicted Digit: {prediction} ({confidence:.1f}%)"
-    )
-```
+        st.success(f"Predicted Digit: {prediction} ({confidence:.1f}%)")
+    else:
+        st.warning("Draw a digit on the canvas before predicting.")
